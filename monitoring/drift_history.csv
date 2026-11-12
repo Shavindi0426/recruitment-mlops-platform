@@ -1,0 +1,8 @@
+timestamp,overall_status,drift_detected,total_features,drifted_features,warning_features,reference_samples,incoming_samples
+2026-11-02T22:12:02.478332,STABLE,False,5,,,2400,600
+2026-11-02T22:31:17.165829,DRIFT DETECTED,True,5,"experience_years, skills_match_score, assessment_score, industry_experience_years, interview_score",,2400,600
+2026-11-02T22:37:49.870561,STABLE,False,5,,,2400,600
+2026-11-03T11:53:29.254107,STABLE,False,5,,,2400,600
+2026-11-03T12:02:16.593524,DRIFT DETECTED,True,5,"experience_years, skills_match_score, assessment_score, industry_experience_years, interview_score",,2400,600
+2026-11-03T13:25:28.487193,DRIFT DETECTED,True,5,"experience_years, skills_match_score, assessment_score, industry_experience_years, interview_score",,2400,600
+2026-11-03T16:07:15.173540,DRIFT DETECTED,True,5,"experience_years, skills_match_score, assessment_score, industry_experience_years, interview_score",,2400,600

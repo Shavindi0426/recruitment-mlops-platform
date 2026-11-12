@@ -1,0 +1,54 @@
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Model artifacts
+models/*
+!models/best_model.joblib
+!models/preprocessor.joblib
+models/backups/
+
+# Data files
+data/raw/*
+data/processed/*
+data/reference/*
+data/incoming/*
+
+# MLflow files
+mlruns/
+mlartifacts/
+mlflow.db
+*.db
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# IDE settings
+.vscode/
+.idea/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+
+# Python build files
+build/
+dist/
+*.egg-info/

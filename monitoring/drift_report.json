@@ -1,0 +1,80 @@
+{
+    "timestamp": "2026-11-03T16:07:15.173540",
+    "reference_data_source": "C:\\Users\\User\\Desktop\\recruitment-mlops-platform\\data\\raw\\recruitment_candidates.csv",
+    "incoming_data_source": "C:\\Users\\User\\Desktop\\recruitment-mlops-platform\\data\\incoming\\candidate_data.csv",
+    "reference_samples": 2400,
+    "incoming_samples": 600,
+    "total_features": 5,
+    "drifted_features": [
+        "experience_years",
+        "skills_match_score",
+        "assessment_score",
+        "industry_experience_years",
+        "interview_score"
+    ],
+    "warning_features": [],
+    "drift_detected": true,
+    "overall_status": "DRIFT DETECTED",
+    "feature_results": {
+        "experience_years": {
+            "psi": 8.157472586737386,
+            "psi_status": "Drift",
+            "ks_statistic": 0.6858333333333333,
+            "ks_p_value": 6.833112270431753e-219,
+            "ks_drift_detected": true,
+            "drift_detected": true,
+            "reference_mean": 7.386666666666667,
+            "incoming_mean": 1.8433333333333333,
+            "reference_samples": 2400,
+            "incoming_samples": 600
+        },
+        "skills_match_score": {
+            "psi": 9.21085546061332,
+            "psi_status": "Drift",
+            "ks_statistic": 0.7495833333333333,
+            "ks_p_value": 7.515921959376054e-269,
+            "ks_drift_detected": true,
+            "drift_detected": true,
+            "reference_mean": 65.0625,
+            "incoming_mean": 38.821666666666665,
+            "reference_samples": 2400,
+            "incoming_samples": 600
+        },
+        "assessment_score": {
+            "psi": 9.085660014400126,
+            "psi_status": "Drift",
+            "ks_statistic": 0.735,
+            "ks_p_value": 1.0461096612912884e-256,
+            "ks_drift_detected": true,
+            "drift_detected": true,
+            "reference_mean": 62.424166666666665,
+            "incoming_mean": 34.52,
+            "reference_samples": 2400,
+            "incoming_samples": 600
+        },
+        "industry_experience_years": {
+            "psi": 9.548112099601811,
+            "psi_status": "Drift",
+            "ks_statistic": 0.7316666666666667,
+            "ks_p_value": 5.397762906414086e-254,
+            "ks_drift_detected": true,
+            "drift_detected": true,
+            "reference_mean": 5.059583333333333,
+            "incoming_mean": 1.2108077086054967,
+            "reference_samples": 2400,
+            "incoming_samples": 600
+        },
+        "interview_score": {
+            "psi": 8.997032775960427,
+            "psi_status": "Drift",
+            "ks_statistic": 0.7475,
+            "ks_p_value": 4.353797309655821e-267,
+            "ks_drift_detected": true,
+            "drift_detected": true,
+            "reference_mean": 64.84458333333333,
+            "incoming_mean": 38.85449636391055,
+            "reference_samples": 2400,
+            "incoming_samples": 600
+        }
+    }
+}

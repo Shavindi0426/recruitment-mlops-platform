@@ -1,0 +1,8 @@
+AUTOMATED RETRAINING DECISION
+Timestamp: 2026-11-03T19:17:45.821579
+Candidate model: Logistic Regression
+Approved: False
+
+f1_improved: False
+accuracy_not_decreased: True
+roc_auc_not_decreased: True

@@ -1,0 +1,51 @@
+
+services:
+
+  # FastAPI Prediction Service
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: recruitment-api
+
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+
+    ports:
+      - "8000:8000"
+
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./reports:/app/reports
+      - ./monitoring:/app/monitoring
+      - ./mlruns:/app/mlruns
+      - ./mlflow.db:/app/mlflow.db
+
+    restart: unless-stopped
+
+  # Streamlit Monitoring Dashboard
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: recruitment-dashboard
+
+    command: streamlit run dashboard/app.py --server.address=0.0.0.0 --server.port=8501
+
+    ports:
+      - "8501:8501"
+
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./reports:/app/reports
+      - ./monitoring:/app/monitoring
+      - ./mlruns:/app/mlruns
+      - ./mlflow.db:/app/mlflow.db
+
+    depends_on:
+      - api
+
+    restart: unless-stopped

@@ -26,8 +26,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy project files
 COPY . .
 
-# Expose API and dashboard ports
-EXPOSE 8000 8501
+# Expose application port
+EXPOSE 8000
 
-# Default command (overridden by Docker Compose)
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Start FastAPI using Render's assigned port.
+# Use port 8000 when PORT is not provided (local Docker).
+CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

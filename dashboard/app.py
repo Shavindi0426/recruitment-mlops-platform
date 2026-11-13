@@ -1,3 +1,4 @@
+
 """
 RECRUITMENT PREDICTION MLOPS DASHBOARD
 
@@ -15,12 +16,12 @@ Streamlit, Plotly, Pandas, Scikit-learn, MLflow
 from pathlib import Path
 import json
 import ast
+import math
 
 import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.express as px
-import plotly.graph_objects as go
 
 from sklearn.model_selection import train_test_split
 
@@ -34,6 +35,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 MODELS_DIR = BASE_DIR / "models"
 MONITORING_DIR = BASE_DIR / "monitoring"
+REPORTS_DIR = BASE_DIR / "reports"
 
 REFERENCE_PATH = (
     DATA_DIR / "raw" / "recruitment_candidates.csv"
@@ -44,21 +46,15 @@ INCOMING_PATHS = [
     DATA_DIR / "incoming" / "candidate_data_drift_test.csv"
 ]
 
-DRIFT_REPORT_PATH = (
-    MONITORING_DIR / "drift_report.json"
-)
-
-DRIFT_HISTORY_PATH = (
-    MONITORING_DIR / "drift_history.csv"
-)
+DRIFT_REPORT_PATH = MONITORING_DIR / "drift_report.json"
+DRIFT_HISTORY_PATH = MONITORING_DIR / "drift_history.csv"
 
 MODEL_PATH = MODELS_DIR / "best_model.joblib"
-
-PREPROCESSOR_PATH = (
-    MODELS_DIR / "preprocessor.joblib"
-)
+PREPROCESSOR_PATH = MODELS_DIR / "preprocessor.joblib"
 
 MLFLOW_DB_PATH = BASE_DIR / "mlflow.db"
+
+MODEL_COMPARISON_PATH = REPORTS_DIR / "model_comparison.csv"
 
 FEATURES = [
     "experience_years",
@@ -218,82 +214,6 @@ def load_reference_data():
         return pd.DataFrame()
 
 
-@st.cache_data(ttl=30)
-def load_incoming_data():
-
-    # First, try to follow the source recorded in the report.
-    report = load_drift_report()
-
-    report_source = report.get(
-        "incoming_data_source",
-        ""
-    )
-
-    selected_path = None
-
-    if report_source:
-
-        try:
-
-            candidate = Path(report_source)
-
-            if candidate.is_file():
-                selected_path = candidate
-
-        except (TypeError, OSError, ValueError):
-            pass
-
-    # If the report source cannot be resolved, use
-    # the same candidate file priority as drift detection.
-    if selected_path is None:
-
-        selected_path = next(
-            (
-                path for path in INCOMING_PATHS
-                if path.exists()
-            ),
-            None
-        )
-
-    try:
-
-        if selected_path is not None:
-
-            df = pd.read_csv(selected_path)
-
-            source = selected_path.name
-
-        else:
-
-            # Demonstration fallback:
-            # use the held-out 20% from original dataset.
-            if not REFERENCE_PATH.exists():
-
-                return pd.DataFrame(), "Not available"
-
-            df = pd.read_csv(REFERENCE_PATH)
-
-            X = df[FEATURES].copy()
-
-            _, incoming = train_test_split(
-                X,
-                test_size=0.20,
-                random_state=RANDOM_STATE
-            )
-
-            source = "Held-out demonstration dataset"
-
-            return clean_feature_data(incoming), source
-
-        return clean_feature_data(df), source
-
-    except Exception as error:
-
-        st.error(f"Incoming data error: {error}")
-
-        return pd.DataFrame(), "Error"
-
-
 def clean_feature_data(df):
 
     missing = [
@@ -319,87 +239,294 @@ def clean_feature_data(df):
     return result.dropna(subset=FEATURES)
 
 
-# ============================================================
-# 5. MLFLOW MODEL METRICS
-# ============================================================
-
 @st.cache_data(ttl=30)
-def load_model_metrics():
+def load_incoming_data():
 
-    if not MLFLOW_DB_PATH.exists():
+    report = load_drift_report()
 
-        return {}, "MLflow database not found"
+    report_source = report.get(
+        "incoming_data_source",
+        ""
+    )
+
+    selected_path = None
+
+    if report_source:
+
+        try:
+
+            candidate = Path(report_source)
+
+            if candidate.is_file():
+                selected_path = candidate
+
+        except (TypeError, OSError, ValueError):
+            pass
+
+    if selected_path is None:
+
+        selected_path = next(
+            (
+                path for path in INCOMING_PATHS
+                if path.exists()
+            ),
+            None
+        )
 
     try:
 
-        import mlflow
+        if selected_path is not None:
 
-        from mlflow.tracking import MlflowClient
+            df = pd.read_csv(selected_path)
 
-        tracking_uri = (
-            "sqlite:///" +
-            MLFLOW_DB_PATH.as_posix()
+            source = selected_path.name
+
+            return clean_feature_data(df), source
+
+        if not REFERENCE_PATH.exists():
+
+            return pd.DataFrame(), "Not available"
+
+        df = pd.read_csv(REFERENCE_PATH)
+
+        X = df[FEATURES].copy()
+
+        _, incoming = train_test_split(
+            X,
+            test_size=0.20,
+            random_state=RANDOM_STATE
         )
 
-        client = MlflowClient(
-            tracking_uri=tracking_uri
+        source = "Held-out demonstration dataset"
+
+        return clean_feature_data(incoming), source
+
+    except Exception as error:
+
+        st.error(f"Incoming data error: {error}")
+
+        return pd.DataFrame(), "Error"
+
+
+# ============================================================
+# 5. MODEL PERFORMANCE METRICS
+# ============================================================
+
+def normalize_metric_columns(df):
+
+    """
+    Normalize model comparison report column names.
+    """
+
+    normalized = {}
+
+    for column in df.columns:
+
+        key = str(column).strip().lower()
+
+        key = key.replace(" ", "_")
+        key = key.replace("-", "_")
+
+        normalized[key] = column
+
+    return normalized
+
+
+def load_metrics_from_csv():
+
+    """
+    Fallback when the MLflow database is unavailable.
+    Reads the saved model comparison report.
+    """
+
+    if not MODEL_COMPARISON_PATH.exists():
+
+        return {}, "MLflow database and model comparison report unavailable"
+
+    try:
+
+        df = pd.read_csv(MODEL_COMPARISON_PATH)
+
+        if df.empty:
+
+            return {}, "Model comparison report is empty"
+
+        columns = normalize_metric_columns(df)
+
+        required = [
+            "accuracy",
+            "precision",
+            "recall"
+        ]
+
+        for column in required:
+
+            if column not in columns:
+
+                return {}, "Required metric columns missing from CSV"
+
+        f1_column = (
+            columns.get("f1_score")
+            or columns.get("f1")
         )
 
-        experiments = client.search_experiments()
+        auc_column = (
+            columns.get("roc_auc")
+            or columns.get("roc_auc_score")
+        )
 
-        best_run = None
-        best_f1 = -1
+        if f1_column is None or auc_column is None:
 
-        for experiment in experiments:
+            return {}, "F1 or ROC-AUC column missing from CSV"
 
-            runs = client.search_runs(
-                experiment_ids=[
-                    experiment.experiment_id
-                ],
-                order_by=[
-                    "attributes.start_time DESC"
-                ],
-                max_results=100
+        model_column = (
+            columns.get("model")
+            or columns.get("model_name")
+        )
+
+        df["_f1_numeric"] = pd.to_numeric(
+            df[f1_column],
+            errors="coerce"
+        )
+
+        df = df.dropna(subset=["_f1_numeric"])
+
+        if df.empty:
+
+            return {}, "No valid model metrics found in CSV"
+
+        best_row = df.loc[
+            df["_f1_numeric"].idxmax()
+        ]
+
+        metrics = {
+
+            "accuracy": float(
+                best_row[columns["accuracy"]]
+            ),
+
+            "precision": float(
+                best_row[columns["precision"]]
+            ),
+
+            "recall": float(
+                best_row[columns["recall"]]
+            ),
+
+            "f1_score": float(
+                best_row[f1_column]
+            ),
+
+            "roc_auc": float(
+                best_row[auc_column]
             )
-
-            for run in runs:
-
-                if run.info.status != "FINISHED":
-                    continue
-
-                metrics = run.data.metrics
-
-                if "f1_score" not in metrics:
-                    continue
-
-                f1 = metrics["f1_score"]
-
-                if f1 > best_f1:
-
-                    best_f1 = f1
-                    best_run = run
-
-        if best_run is None:
-
-            return {}, "No completed MLflow model found"
-
-        metrics = best_run.data.metrics
+        }
 
         model_name = (
-            best_run.data.params.get(
-                "model_name",
-                best_run.data.tags.get(
-                    "model_name",
-                    "MLflow Model"
-                )
-            )
+            str(best_row[model_column])
+            if model_column
+            else "Best Model from Comparison Report"
         )
 
         return metrics, model_name
 
     except Exception as error:
 
-        return {}, f"MLflow error: {error}"
+        return {}, f"CSV metric loading error: {error}"
+
+
+@st.cache_data(ttl=30)
+def load_model_metrics():
+
+    """
+    First attempts to load metrics from MLflow.
+    If MLflow is unavailable, uses model_comparison.csv.
+    """
+
+    if MLFLOW_DB_PATH.exists():
+
+        try:
+
+            from mlflow.tracking import MlflowClient
+
+            tracking_uri = (
+                "sqlite:///"
+                + MLFLOW_DB_PATH.as_posix()
+            )
+
+            client = MlflowClient(
+                tracking_uri=tracking_uri
+            )
+
+            experiments = client.search_experiments()
+
+            best_run = None
+            best_f1 = -1
+
+            for experiment in experiments:
+
+                runs = client.search_runs(
+                    experiment_ids=[
+                        experiment.experiment_id
+                    ],
+                    order_by=[
+                        "attributes.start_time DESC"
+                    ],
+                    max_results=100
+                )
+
+                for run in runs:
+
+                    if run.info.status != "FINISHED":
+                        continue
+
+                    metrics = run.data.metrics
+
+                    if "f1_score" not in metrics:
+                        continue
+
+                    f1 = metrics["f1_score"]
+
+                    if f1 > best_f1:
+
+                        best_f1 = f1
+                        best_run = run
+
+            if best_run is not None:
+
+                metrics = best_run.data.metrics
+
+                model_name = (
+                    best_run.data.params.get(
+                        "model_name",
+                        best_run.data.tags.get(
+                            "model_name",
+                            "MLflow Model"
+                        )
+                    )
+                )
+
+                required_metrics = [
+                    "accuracy",
+                    "precision",
+                    "recall",
+                    "f1_score",
+                    "roc_auc"
+                ]
+
+                if all(
+                    metric in metrics
+                    for metric in required_metrics
+                ):
+
+                    return metrics, model_name
+
+        except Exception:
+            pass
+
+    # CSV fallback
+
+    return load_metrics_from_csv()
 
 
 # ============================================================
@@ -409,8 +536,11 @@ def load_model_metrics():
 def check_model_artifacts():
 
     return {
+
         "best_model": MODEL_PATH.exists(),
+
         "preprocessor": PREPROCESSOR_PATH.exists()
+
     }
 
 
@@ -463,14 +593,12 @@ def get_feature_status(result):
 
 def count_drifted_features(value):
 
-    # Handle missing values
     if value is None:
         return 0
 
     if isinstance(value, (list, tuple, set)):
         return len(value)
 
-    # Handle numeric values
     if isinstance(value, (int, float, np.integer)):
         return int(value) if pd.notna(value) else 0
 
@@ -481,7 +609,6 @@ def count_drifted_features(value):
         if value.lower() in ["", "none", "nan", "null"]:
             return 0
 
-        # First, try to parse a Python list
         try:
 
             parsed = ast.literal_eval(value)
@@ -495,32 +622,15 @@ def count_drifted_features(value):
         except (ValueError, SyntaxError, TypeError):
             pass
 
-        # Handle comma-separated feature names
         features = [
             feature.strip()
             for feature in value.split(",")
             if feature.strip()
-            and feature.strip().lower() not in [
-                "none", "nan", "null"
-            ]
         ]
 
         return len(features)
 
     return 0
-
-
-def get_status_color(status):
-
-    status = str(status).upper()
-
-    if status in ["DRIFT", "DRIFT DETECTED"]:
-        return "#EF4444"
-
-    if status == "WARNING":
-        return "#F59E0B"
-
-    return "#22C55E"
 
 
 # ============================================================
@@ -704,8 +814,6 @@ if page == "Dashboard Overview":
 
     st.markdown("---")
 
-    # Model performance
-
     st.header("Model Performance")
 
     metric_columns = st.columns(5)
@@ -739,12 +847,10 @@ if page == "Dashboard Overview":
                 st.metric(label, "N/A")
 
     st.caption(
-        f"Source: MLflow | Model: {model_name}"
+        f"Source: MLflow / Model Comparison CSV | Model: {model_name}"
     )
 
     st.markdown("---")
-
-    # Feature drift summary
 
     st.header("Feature Drift Summary")
 
@@ -763,12 +869,9 @@ if page == "Dashboard Overview":
                     4
                 ),
 
-                "KS p-value": round(
-                    safe_float(
-                        result.get("ks_p_value"),
-                        1
-                    ),
-                    4
+                "KS p-value": format_number(
+                    result.get("ks_p_value"),
+                    6
                 ),
 
                 "Status": get_feature_status(result)
@@ -791,8 +894,6 @@ if page == "Dashboard Overview":
         )
 
     st.markdown("---")
-
-    # Drift alerts
 
     st.header("Drift Detection Status")
 
@@ -828,8 +929,6 @@ if page == "Dashboard Overview":
 
     st.markdown("---")
 
-    # Dataset information
-
     st.header("Dataset Information")
 
     col1, col2 = st.columns(2)
@@ -859,6 +958,7 @@ if page == "Dashboard Overview":
         st.write(
             f"Features: {incoming_data.shape[1]}"
         )
+
 
 # ============================================================
 # 12. DATA DRIFT MONITORING
@@ -911,8 +1011,6 @@ elif page == "Data Drift Monitoring":
 
         col1, col2 = st.columns(2)
 
-        # PSI chart
-
         with col1:
 
             fig = px.bar(
@@ -952,12 +1050,10 @@ elif page == "Data Drift Monitoring":
                 use_container_width=True
             )
 
-        # KS chart
         with col2:
 
             ks_plot_df = drift_df.copy()
 
-            # Convert very small p-values into a readable scale
             ks_plot_df["KS -log10(p-value)"] = -np.log10(
                 pd.to_numeric(
                     ks_plot_df["KS p-value"],
@@ -981,14 +1077,12 @@ elif page == "Data Drift Monitoring":
                 }
             )
 
-            # Significance threshold: p-value = 0.05
             significance_threshold = -np.log10(0.05)
 
             fig.add_hline(
                 y=significance_threshold,
                 line_dash="dash",
-                annotation_text="Significance level (p = 0.05)",
-                annotation_position="top right"
+                annotation_text="Significance level (p = 0.05)"
             )
 
             fig.update_layout(
@@ -1005,8 +1099,6 @@ elif page == "Data Drift Monitoring":
 
         st.markdown("---")
 
-        # Detailed drift results
-
         st.subheader("Detailed Drift Results")
 
         display_df = drift_df.copy()
@@ -1017,7 +1109,9 @@ elif page == "Data Drift Monitoring":
             "KS p-value"
         ]:
 
-            display_df[col] = display_df[col].round(4)
+            display_df[col] = display_df[col].apply(
+                lambda value: format_number(value, 6)
+            )
 
         st.dataframe(
             display_df,
@@ -1026,8 +1120,6 @@ elif page == "Data Drift Monitoring":
         )
 
         st.markdown("---")
-
-        # Alerts
 
         st.subheader("Drift Alerts")
 
@@ -1158,8 +1250,6 @@ elif page == "Feature Analysis":
 
         st.markdown("---")
 
-        # Box plot
-
         st.subheader(
             f"Reference vs Incoming: {selected_feature}"
         )
@@ -1201,27 +1291,12 @@ elif page == "Feature Analysis":
             use_container_width=True
         )
 
-        # Histogram
+        st.markdown("---")
 
         st.subheader("Feature Distribution Comparison")
 
-        histogram_df = pd.DataFrame({
-
-            "Value": np.concatenate([
-                reference_values.to_numpy(),
-                incoming_values.to_numpy()
-            ]),
-
-            "Dataset": (
-                ["Reference"] * len(reference_values)
-                +
-                ["Incoming"] * len(incoming_values)
-            )
-
-        })
-
         fig = px.histogram(
-            histogram_df,
+            comparison_df,
             x="Value",
             color="Dataset",
             barmode="overlay",
@@ -1247,8 +1322,6 @@ elif page == "Feature Analysis":
         )
 
         st.markdown("---")
-
-        # Feature statistics
 
         st.subheader("Feature Statistics")
 
@@ -1383,19 +1456,17 @@ elif page == "Model Performance":
         )
 
         st.caption(
-            f"MLflow experiment model: {model_name}"
+            f"Model: {model_name}"
         )
 
     else:
 
         st.warning(
             "Model performance metrics are not available. "
-            "Check your MLflow tracking database."
+            "Check the MLflow database or model comparison CSV."
         )
 
     st.markdown("---")
-
-    # Model artifacts
 
     st.subheader("Model Artifacts")
 
@@ -1443,6 +1514,11 @@ elif page == "Model Performance":
         f"**MLflow database:** {MLFLOW_DB_PATH}"
     )
 
+    st.write(
+        f"**Comparison report:** {MODEL_COMPARISON_PATH}"
+    )
+
+
 # ============================================================
 # 15. HISTORICAL MONITORING
 # ============================================================
@@ -1474,8 +1550,6 @@ elif page == "Monitoring History":
 
         st.markdown("---")
 
-        # Find timestamp column
-
         date_candidates = [
             "timestamp",
             "date",
@@ -1491,8 +1565,6 @@ elif page == "Monitoring History":
             None
         )
 
-        # Find drift count column
-
         count_candidates = [
             "drifted_features_count",
             "drift_count",
@@ -1507,8 +1579,6 @@ elif page == "Monitoring History":
             ),
             None
         )
-
-        # Historical drift chart
 
         st.subheader(
             "Historical Drifted Feature Count"
@@ -1529,19 +1599,11 @@ elif page == "Monitoring History":
 
             if count_column:
 
-                # Convert the stored drifted_features field into a
-                # numeric count. This supports Python-list strings,
-                # comma-separated feature names, and numeric counts.
-
                 if count_column == "drifted_features":
 
                     chart_df["drifted_count"] = chart_df[
                         count_column
                     ].apply(count_drifted_features)
-
-                    # If a row is marked as drifted but its feature
-                    # list is empty/unreadable, use the explicit
-                    # drift status as a safe fallback for the chart.
 
                     if "overall_status" in chart_df.columns:
 
@@ -1565,13 +1627,15 @@ elif page == "Monitoring History":
                             )
 
                             chart_df.loc[
-                                missing_count, "drifted_count"
+                                missing_count,
+                                "drifted_count"
                             ] = fallback_count[missing_count].fillna(1)
 
                         else:
 
                             chart_df.loc[
-                                missing_count, "drifted_count"
+                                missing_count,
+                                "drifted_count"
                             ] = 1
 
                     y_column = "drifted_count"
@@ -1594,8 +1658,6 @@ elif page == "Monitoring History":
                     date_column
                 )
 
-                # Display calculated values for verification
-
                 chart_display = chart_df[
                     [date_column, y_column]
                 ].copy()
@@ -1616,8 +1678,6 @@ elif page == "Monitoring History":
                     use_container_width=True,
                     hide_index=True
                 )
-
-                # Historical drift line chart
 
                 fig = px.line(
                     chart_df,
@@ -1666,8 +1726,6 @@ elif page == "Monitoring History":
             )
 
         st.markdown("---")
-
-        # Overall monitoring status chart
 
         if "overall_status" in history.columns:
 
@@ -1732,4 +1790,4 @@ st.markdown(
     </div>
     """,
     unsafe_allow_html=True
-)            
+)

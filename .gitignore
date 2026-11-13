@@ -16,10 +16,12 @@ models/*
 models/backups/
 
 # Data files
-data/raw/*
+# Keep raw and incoming datasets required by the deployed application
 data/processed/*
-data/reference/*
+data/raw/*
+!data/raw/*.csv
 data/incoming/*
+!data/incoming/*.csv
 
 # MLflow files
 mlruns/
